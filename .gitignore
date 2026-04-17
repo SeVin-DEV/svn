@@ -1,0 +1,4 @@
+gitignore
+.env
+core/__pycache__
+__pycache__
