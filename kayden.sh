@@ -3,7 +3,7 @@
 
 set -e
 # Clean exit handling
-trap "echo -e '\n[KAYDEN] Shutdown signal received. Peace out.'; exit 0" SIGINT SIGTERM
+trap "echo -e '\n[KAYDEN] Shutdown signal received. Peace out.'; exit 0" 
 
 while true; do
     echo "[KAYDEN] --- New Cycle Starting ---"
