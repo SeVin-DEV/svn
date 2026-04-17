@@ -1,107 +1,55 @@
-# core/engine.py
+from collections import defaultdict
 
-import json
-from datetime import datetime
+def expanded_contradiction(node_a, node_b):
+    """
+    Enhanced contradiction model from Cognitive v5.
+    Detects direct edge conflicts and indirect neighborhood overlap.
+    """
+    a_sup = set(node_a.get("edges", {}).get("supports", {}).keys())
+    a_con = set(node_a.get("edges", {}).get("contradicts", {}).keys())
+    b_sup = set(node_b.get("edges", {}).get("supports", {}).keys())
+    b_con = set(node_b.get("edges", {}).get("contradicts", {}).keys())
 
+    # Direct conflict: One supports what the other contradicts
+    direct = (a_sup & b_con) or (a_con & b_sup)
+    
+    # Indirect: High overlap of shared neighbors regardless of polarity
+    indirect = len((a_sup | a_con) & (b_sup | b_con)) > 2
+    
+    return bool(direct or indirect)
 
-class CognitiveEngine:
-    def __init__(self, app):
-        self.app = app
+def resolve_conflicts(beliefs):
+    keys = list(beliefs.keys())
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            a, b = beliefs[keys[i]], beliefs[keys[j]]
+            if expanded_contradiction(a, b):
+                # Apply the weight decay (Identity Stability logic)
+                a["weight"] *= 0.97
+                b["weight"] *= 0.97
+                a.setdefault("conflict_load", 0)
+                b.setdefault("conflict_load", 0)
+                a["conflict_load"] += 1
+                b["conflict_load"] += 1
+    return beliefs
 
-    async def run_cycle(self, user_input: str):
-        """
-        Full cognition cycle:
-        - load state
-        - memory update
-        - belief filtering
-        - context construction
-        - model execution
-        """
+def compute_coherence(beliefs):
+    keys = list(beliefs.keys())
+    total, conflicts = 0, 0
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            total += 1
+            if expanded_contradiction(beliefs[keys[i]], beliefs[keys[j]]):
+                conflicts += 1
+    return 1.0 - (conflicts / total) if total > 0 else 1.0
 
-        state = self.app.state.load_state()
-        history = state.get("history", [])
-        beliefs = state.get("beliefs", {})
-
-        # --- STEP 1: Append user input ---
-        history.append({"role": "user", "content": user_input})
-
-        # --- STEP 2: MEMORY SUMMARIZATION ---
-        memory_summary = self.app.memory.summarize_if_needed(history)
-
-        if memory_summary:
-            self.app.memory.save_summary({
-                "summary": memory_summary,
-                "last_updated": datetime.utcnow().isoformat()
-            })
-
-        # --- STEP 3: LOAD LONG-TERM MEMORY ---
-        memory_data = self.app.memory.load_summary()
-
-        # --- STEP 4: BELIEF RELEVANCE FILTER ---
-        relevant_beliefs = self.app.memory.score_beliefs(
-            beliefs,
-            user_input
-        )
-
-        # --- STEP 5: BUILD SYSTEM CONTEXT ---
-        system_context = self.build_system_context(
-            memory_data,
-            relevant_beliefs
-        )
-
-        # Inject into state (important for downstream use)
-        state["system_context"] = system_context
-
-        # --- STEP 6: MODEL CALL ---
-        response = await self.call_model(
-            system_context,
-            history
-        )
-
-        # --- STEP 7: APPEND RESPONSE ---
-        history.append({"role": "assistant", "content": response})
-
-        # --- STEP 8: SAVE STATE ---
-        state["history"] = history
-        self.app.state.save_state(state)
-
-        return response
-
-    # -----------------------------
-
-    def build_system_context(self, memory_data, beliefs):
-        """
-        Construct system prompt context
-        """
-        memory_text = memory_data.get("summary", "")
-
-        return f"""
-LONG TERM MEMORY:
-{memory_text}
-
-RELEVANT BELIEFS:
-{json.dumps(beliefs, indent=2)}
-"""
-
-    # -----------------------------
-
-    async def call_model(self, system_context, history):
-        """
-        Handles model execution
-        """
-
-        messages = [
-            {"role": "system", "content": system_context}
-        ] + history
-
-        try:
-            response = await self.app.client.chat.completions.create(
-                model=self.app.config.model_name,
-                messages=messages,
-                temperature=0.7
-            )
-
-            return response.choices[0].message.content.strip()
-
-        except Exception as e:
-            return f"[MODEL ERROR] {str(e)}"
+def prune_low_value_nodes(beliefs):
+    # Prune nodes that are old, low weight, and high conflict
+    to_delete = [
+        k for k, v in beliefs.items()
+        if (v.get("weight", 0) - (v.get("conflict_load", 0) * 0.05)) < 0.1
+        and v.get("age", 0) > 15
+    ]
+    for k in to_delete:
+        del beliefs[k]
+    return beliefs
