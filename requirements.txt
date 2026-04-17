@@ -1,0 +1,15 @@
+# --- Core API & Environment ---
+fastapi
+uvicorn
+python-dotenv
+openai
+
+# --- Web Toolkit & Tools ---
+requests
+beautifulsoup4
+playwright
+yt-dlp
+
+# --- Maintenance & Logic ---
+datetime
+# Note: ffmpeg and yt-dlp binary must be installed via apt/pkg in Termux/Linux
