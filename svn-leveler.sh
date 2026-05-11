@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 set -e
 
-echo "→ Leveling environment (Corepack Edition)..."
+echo "→ Leveling environment (The Final Stand)..."
 
 # 1. System Dependencies
 if ! command -v psql &> /dev/null; then
     apt update && apt install -y postgresql postgresql-contrib
 fi
 
-# 2. Fix pnpm using Corepack (Built-in Node manager)
-echo "→ Activating pnpm via Corepack..."
-rm -f /usr/local/bin/pnpm
-corepack enable
-corepack prepare pnpm@latest --activate
+# 2. Install pnpm via npm (Most reliable fallback)
+echo "→ Installing pnpm via npm..."
+npm install -g pnpm || (echo "npm not found. Run: apt install -y nodejs npm" && exit 1)
 
 # 3. Create systemctl shim
 echo "→ Creating systemctl shim..."
@@ -29,4 +27,4 @@ service postgresql start || /etc/init.d/postgresql start
 
 echo ""
 echo "→ Verification: $(pnpm --version)"
-echo "✓ PROOT LEVELED. You are ready for 'bash install.sh'."
+echo "✓ PROOT LEVELED. Run 'bash install.sh' now."
