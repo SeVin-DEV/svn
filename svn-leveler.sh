@@ -1,23 +1,30 @@
 #!/usr/bin/env bash
 set -e
 
-echo "→ Leveling environment for standard install.sh..."
-
-# 1. Clean up
+echo "→ Clearing old junk..."
 rm -f /usr/local/bin/pnpm /usr/local/bin/systemctl
 
-# 2. Download and Extract the ARM64 binary
-# We pull the tarball, extract it, and move the binary to /usr/local/bin
-echo "→ Downloading latest pnpm ARM64 tarball..."
+# 1. Download and Extract with "Search and Rescue" logic
+echo "→ Fetching latest pnpm ARM64..."
 curl -fsSL https://github.com/pnpm/pnpm/releases/latest/download/pnpm-linux-arm64.tar.gz -o /tmp/pnpm.tar.gz
 
-echo "→ Extracting pnpm..."
-tar -xzf /tmp/pnpm.tar.gz -C /tmp
-mv /tmp/pnpm-linux-arm64 /usr/local/bin/pnpm
-chmod +x /usr/local/bin/pnpm
-rm /tmp/pnpm.tar.gz
+echo "→ Extracting and finding the binary..."
+mkdir -p /tmp/pnpm-fix
+tar -xzf /tmp/pnpm.tar.gz -C /tmp/pnpm-fix
 
-# 3. Create systemctl shim (The installer trick)
+# This looks for the actual 'pnpm' file anywhere in the extracted folder
+PNPM_BIN=$(find /tmp/pnpm-fix -name "pnpm-linux-arm64" -o -name "pnpm" -type f | head -n 1)
+
+if [ -z "$PNPM_BIN" ]; then
+    echo "× Error: Could not find the pnpm binary in the download."
+    exit 1
+fi
+
+mv "$PNPM_BIN" /usr/local/bin/pnpm
+chmod +x /usr/local/bin/pnpm
+rm -rf /tmp/pnpm.tar.gz /tmp/pnpm-fix
+
+# 2. Re-create the systemctl "Liar" shim
 echo "→ Creating systemctl shim..."
 cat << 'SHIM' > /usr/local/bin/systemctl
 #!/usr/bin/env bash
@@ -26,13 +33,14 @@ exit 0
 SHIM
 chmod +x /usr/local/bin/systemctl
 
-# 4. Start PostgreSQL manually
-echo "→ Starting PostgreSQL service..."
+# 3. Start PostgreSQL
+echo "→ Starting PostgreSQL..."
 service postgresql start || pg_ctlcluster 14 main start
 
-# 5. Export environment
+# 4. Export environment
 export SHELL=/bin/bash
 export PATH="/usr/local/bin:$PATH"
 
-echo "→ pnpm version: $(pnpm --version)"
-echo "✓ Environment leveled. Run 'bash install.sh' now."
+echo ""
+echo "→ Verification: $(pnpm --version)"
+echo "✓ PROOT LEVELED."
